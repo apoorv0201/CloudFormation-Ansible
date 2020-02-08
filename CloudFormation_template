@@ -1,0 +1,143 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: EC2 pritunl server and a Completed Setup
+Parameters:
+  vpcId:
+    Type: 'AWS::EC2::VPC::Id'
+    Default: vpc-0b304f71
+  keyName:
+    Type: 'AWS::EC2::KeyPair::KeyName'
+    Default: any-key-pair
+  instanceType:
+    Description: InstanceType
+    Type: String
+    Default: t3.large
+  amiId:
+    Type: String
+    Default: ami-01e074f40dfb9999d
+  ec2RootVolumeSize:
+    Description: RootVolumeSize minimum value is 30 GB
+    Type: Number
+    MinValue: 30
+    Default: 30
+  DBInstanceID:
+    Default: mydbinstance
+    Description: Instance Name for DB
+    Type: String
+  DBName:
+    Default: mydb
+    Description: Database name to be created
+    Type: String
+  DBInstanceClass:
+    Default: db.t2.medium
+    Description: DB instance class
+    Type: String
+  DBAllocatedStorage:
+    Default: '50'
+    Description: The size of the database (GiB)
+    Type: Number
+  DBUsername:
+    NoEcho: 'true'
+    Description: Username for MySQL database access
+    Type: String
+  DBPassword:
+    NoEcho: 'true'
+    Description: Password MySQL database access
+    Type: String
+    MinLength: '8'
+    MaxLength: '41'
+    AllowedPattern: '[a-zA-Z0-9]*'
+    ConstraintDescription: must contain only alphanumeric characters.
+Resources:
+    MyDB:
+        Type: 'AWS::RDS::DBInstance'
+        Properties:
+            DBInstanceIdentifier: !Ref DBInstanceID
+            DBName: !Ref DBName
+            DBInstanceClass: !Ref DBInstanceClass
+            AllocatedStorage: !Ref DBAllocatedStorage
+            Engine: MySQL
+            EngineVersion: 8.0.16
+            MasterUsername: !Ref DBUsername
+            MasterUserPassword: !Ref DBPassword
+    SecurityGroup:
+        Type: 'AWS::EC2::SecurityGroup'
+        Properties:
+            GroupDescription: Jira Security Group 
+            VpcId: !Ref vpcId
+            Tags:
+                -
+                    Key: Name
+                    Value: Jira Security Group
+    SecurityGroupForJira:
+        Type: 'AWS::EC2::SecurityGroupIngress'
+        DependsOn: 'SecurityGroup'
+        Properties:
+            GroupId: !Ref  SecurityGroup
+            IpProtocol: tcp
+            FromPort: 8080
+            ToPort: 8080
+            CidrIp: 0.0.0.0/0
+    ec2Instance:
+        Type: 'AWS::EC2::Instance'
+        Properties:
+            KeyName: !Ref keyName
+            InstanceType: !Ref instanceType
+            ImageId: !Ref amiId
+            SecurityGroupIds:
+                - !Ref SecurityGroup
+            UserData: !Base64
+                'Fn::Sub': >
+                  #!/bin/bash
+
+                  set -e 
+
+                  sudo yum -y remove java-1.7.0-openjdk
+
+                  sudo yum -y install java-1.8.0
+
+                  sudo yum update -y
+                  
+                  sudo yum install epel-release
+                  
+                  sudo yum -y install git
+                  
+                  sudo pip install ansible
+
+                  sudo mkdir /home/ec2-user/ansible
+
+                  sudo tee /home/ec2-user/ansible/jira.yaml << EOF
+
+                  ---
+                    - name: Install JIRA server Playbook
+                      hosts: localhost
+                      become: yes
+                      tasks:
+                       - name: Downlod JIRA using get_url
+                         get_url:
+                           url: https://www.atlassian.com/software/jira/downloads/binary/atlassian-jira-software-8.7.0.tar.gz
+                           dest: /home/ec2-user/ansible
+                           mode: 0777
+                       - name: Extract foo.tgz into /var/lib/foo
+                         unarchive:
+                           src: /home/ec2-user/ansible/atlassian-jira-software-8.7.0.tar.gz
+                           dest: /home/ec2-user/ansible
+                       - name: Setting JIRA Home
+                         command: mv /home/ec2-user/ansible/atlassian-jira-software-8.7.0-standalone/atlassian-jira/WEB-INF/classes/jira-application.properties /home/ec2-user/ansible/atlassian-jira-software-8.7.0-standalone/atlassian-jira/WEB-INF/classes/jira-application.propertiesold
+                       - name: Ansible create file with content example
+                         copy:
+                           dest: "/home/ec2-user/ansible/atlassian-jira-software-8.7.0-standalone/atlassian-jira/WEB-INF/classes/jira-application.properties"
+                           content: |
+                             jira.home = /home/ec2-user/ansible/atlassian-jira-software-8.7.0-standalone/atlassian-jira
+                       - name: Call start-jira.sh
+                         command: bash /home/ec2-user/ansible/atlassian-jira-software-8.7.0-standalone/bin/start-jira.sh -fg
+                    
+          
+                  EOF
+                  
+                  sudo yum update -y
+
+                  /usr/local/bin/ansible-playbook /home/ec2-user/ansible/jira.yaml                  
+                  
+            Tags:
+                - Key: Name
+                  Value: Jira Server
