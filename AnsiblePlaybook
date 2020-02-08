@@ -1,0 +1,24 @@
+---
+- name: Install JIRA server Playbook
+  hosts: localhost
+  become: yes
+  tasks:
+   - name: Downlod JIRA using get_url
+     get_url:
+       url: https://www.atlassian.com/software/jira/downloads/binary/atlassian-jira-software-8.7.0.tar.gz
+       dest: /home/ec2-user/ansible
+       mode: 0777
+- name: Extract foo.tgz into /var/lib/foo
+  unarchive:
+    src: /home/ec2-user/ansible/atlassian-jira-software-8.7.0.tar.gz
+    dest: /home/ec2-user/ansible
+- name: Setting JIRA Home
+  command: mv /home/ec2-user/ansible/atlassian-jira-software-8.7.0-standalone/atlassian-jira/WEB-INF/classes/jira-application.properties /home/ec2-user/ansible/atlassian-jira-software-8.7.0-standalone/atlassian-jira/WEB-INF/classes/jira-application.propertiesold
+- name: Ansible create file with content example
+  copy:
+    dest: "/home/ec2-user/ansible/atlassian-jira-software-8.7.0-standalone/atlassian-jira/WEB-INF/classes/jira-application.properties"
+    content: |
+      jira.home = /home/ec2-user/ansible/atlassian-jira-software-8.7.0-standalone/atlassian-jira
+- name: Call start-jira.sh
+  command: bash /home/ec2-user/ansible/atlassian-jira-software-8.7.0-standalone/bin/start-jira.sh -fg
+   
